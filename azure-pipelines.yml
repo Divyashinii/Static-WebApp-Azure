@@ -1,0 +1,33 @@
+trigger:
+- master
+
+pool:
+  name: 'My Agent'
+
+steps:
+- task: AzureCLI@2
+  displayName: 'Running Pipeline Script'
+  inputs:
+    azureSubscription: 'myServiceConnection1'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      $AccountName = "staticwebappstg"
+      $RG = "static-web-app-rg"
+      $ProfileName = "staticwebappcdn"
+      $EndPoint = "staticwebappendpoint"
+
+      Write-Host "--------------------------------------------------------"
+      Write-Host "|   Removing previous content from CDN edge locations  |"
+      Write-Host "--------------------------------------------------------"
+      az afd endpoint purge --name $EndPoint --profile-name $ProfileName --resource-group $RG --content-paths "/*"
+      if ($LASTEXITCODE -ne 0) { Write-Host "##[warning]CDN purge failed, continuing..." }
+
+      Write-Host "--------------------------------------------------------"
+      Write-Host "|           Uploading to Azure Storage Account         |"
+      Write-Host "--------------------------------------------------------"
+      $Connection_String = az storage account show-connection-string --name $AccountName --resource-group $RG --query connectionString -o tsv
+      if ($LASTEXITCODE -ne 0) { Write-Error "Failed to get connection string"; exit 1 }
+
+      az storage blob upload-batch -d '$web' -s "website" --connection-string "$Connection_String" --overwrite --pattern "*"
+      if ($LASTEXITCODE -ne 0) { Write-Error "Blob upload failed"; exit 1 }
